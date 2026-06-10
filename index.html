@@ -1409,6 +1409,7 @@
       <button class="tab-btn" onclick="switchTab('resultats')">📊 Résultats</button>
       <button class="tab-btn" onclick="switchTab('bilan')">📈 Bilan classe</button>
       <button class="tab-btn" onclick="switchTab('import')">📂 Import CSV</button>
+      <button class="tab-btn" onclick="switchTab('planning')" style="background:rgba(232,184,75,0.08);color:var(--clr-accent);border:1px solid rgba(232,184,75,0.2);">📅 Planification</button>
     </div>
   </div>
 
@@ -3308,13 +3309,14 @@ function buildRemediation(s) {
 // ============================================================
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-    const tabs = ['saisie', 'resultats', 'bilan', 'import'];
+    const tabs = ['saisie', 'resultats', 'bilan', 'import', 'planning'];
     btn.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   if (tab === 'resultats') renderResultsTable();
   if (tab === 'bilan') renderBilan();
+  if (tab === 'planning') renderPlanningAll();
 }
 
 // ============================================================
@@ -4308,6 +4310,590 @@ setTimeout(() => {
   demoBtn.onclick = loadDemoData;
   headerActions.insertBefore(demoBtn, headerActions.firstChild);
 }, 100);
+</script>
+
+  <!-- TAB: PLANIFICATION DES SÉANCES -->
+  <div class="tab-content" id="tab-planning">
+
+    <!-- En-tête de section -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+      <div>
+        <div style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--clr-accent);margin-bottom:6px;">
+          <span style="width:22px;height:1.5px;background:var(--clr-accent);border-radius:2px;display:inline-block;"></span>
+          Planification des séances EPS
+        </div>
+        <h2 style="font-family:'DM Serif Display',Georgia,serif;font-size:22px;font-weight:700;color:var(--clr-text);line-height:1.15;margin-bottom:4px;">Cycle Course de Durée — Tableau de bord prévisionnel</h2>
+        <p style="font-size:13px;color:var(--clr-muted);line-height:1.6;">Planifiez, organisez et suivez l'avancement de vos séances. Les données de la classe active (<strong style="color:var(--clr-text);" id="planning-class-label">—</strong>) sont automatiquement intégrées.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-secondary btn-sm" onclick="planningExportCSV()" title="Exporter le planning en CSV">⬇ Export CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="planningPrint()" title="Imprimer le planning">🖨 Imprimer</button>
+        <button class="btn btn-primary" onclick="openPlanningForm()">✚ Nouvelle séance</button>
+      </div>
+    </div>
+
+    <!-- Indicateurs rapides -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;" id="planning-stats">
+      <div class="stat-card gold">
+        <div class="stat-label">Séances prévues</div>
+        <div class="stat-value" id="p-stat-total">0</div>
+        <div class="stat-sub">dans le cycle</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Réalisées</div>
+        <div class="stat-value" id="p-stat-done" style="color:var(--clr-green);">0</div>
+        <div class="stat-sub">séances</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">À planifier</div>
+        <div class="stat-value" id="p-stat-todo" style="color:var(--clr-accent2);">0</div>
+        <div class="stat-sub">séances</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Annulées</div>
+        <div class="stat-value" id="p-stat-cancel" style="color:var(--clr-red);">0</div>
+        <div class="stat-sub">séances</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Progression</div>
+        <div class="stat-value" id="p-stat-pct">—</div>
+        <div class="stat-sub">du cycle</div>
+        <div class="progress-bar" style="margin-top:8px;"><div class="progress-fill" id="p-bar-pct" style="background:var(--clr-accent);width:0%;"></div></div>
+      </div>
+    </div>
+
+    <!-- Formulaire d'ajout de séance -->
+    <div class="panel" style="margin-bottom:16px;" id="planning-form-panel">
+      <div class="panel-header">
+        <div class="panel-icon gold">📅</div>
+        <div>
+          <div style="font-weight:600;" id="pf-title">Nouvelle séance</div>
+          <div style="font-size:11px;color:var(--clr-muted);">Remplissez les informations puis validez</div>
+        </div>
+        <button class="modal-close" onclick="closePlanningForm()" style="margin-left:auto;" title="Fermer">✕</button>
+      </div>
+      <div id="planning-form" style="display:none;padding:18px 20px;border-bottom:1px solid var(--clr-border);">
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;">
+          <div>
+            <label>Date de la séance</label>
+            <input type="date" id="pf-date"/>
+          </div>
+          <div>
+            <label>Heure début</label>
+            <input type="text" id="pf-heure-debut" placeholder="Ex: 09:00"/>
+          </div>
+          <div>
+            <label>Heure fin</label>
+            <input type="text" id="pf-heure-fin" placeholder="Ex: 10:00"/>
+          </div>
+          <div>
+            <label>Classe / Groupe</label>
+            <input type="text" id="pf-classe" placeholder="Ex: 2AC-B"/>
+          </div>
+          <div>
+            <label>Niveau</label>
+            <select id="pf-niveau">
+              <option value="Débutant">Débutant</option>
+              <option value="Intermédiaire" selected>Intermédiaire</option>
+              <option value="Avancé">Avancé</option>
+            </select>
+          </div>
+          <div>
+            <label>Activité EPS</label>
+            <select id="pf-activite">
+              <option value="Course de Durée" selected>Course de Durée</option>
+              <option value="Athlétisme">Athlétisme</option>
+              <option value="Football">Football</option>
+              <option value="Handball">Handball</option>
+              <option value="Volleyball">Volleyball</option>
+              <option value="Gymnastique">Gymnastique</option>
+              <option value="Natation">Natation</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label>Objectif pédagogique</label>
+            <input type="text" id="pf-objectif" placeholder="Ex: Courir en régularité — VMA 80%"/>
+          </div>
+          <div>
+            <label>Lieu / Terrain</label>
+            <input type="text" id="pf-lieu" placeholder="Ex: Piste 200m · Gymnase"/>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label>Matériel nécessaire</label>
+            <input type="text" id="pf-materiel" placeholder="Ex: Chronomètres, plots, dossards"/>
+          </div>
+          <div>
+            <label>Organisation / Dispositif</label>
+            <input type="text" id="pf-organisation" placeholder="Ex: Groupes de niveau par VMA"/>
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label>Déroulement prévu (étapes)</label>
+          <input type="text" id="pf-deroulement" placeholder="Ex: Échauffement 10min · Course 20min (3 répétitions 5min) · Retour au calme"/>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label>Critères d'évaluation</label>
+            <input type="text" id="pf-criteres" placeholder="Ex: Régularité des tours ± 5s"/>
+          </div>
+          <div>
+            <label>Statut</label>
+            <select id="pf-statut">
+              <option value="À planifier">À planifier</option>
+              <option value="Planifiée">Planifiée ✔</option>
+              <option value="Réalisée">Réalisée ✅</option>
+              <option value="Annulée">Annulée ✗</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <label>Remarques / Adaptations</label>
+          <input type="text" id="pf-remarques" placeholder="Ex: Adapter pour élèves à besoins spécifiques · Terrain glissant si pluie"/>
+        </div>
+
+        <input type="hidden" id="pf-edit-idx" value="-1"/>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="submitPlanning()">✅ Valider la séance</button>
+          <button class="btn btn-secondary" onclick="closePlanningForm()">Annuler</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tableau de bord prévisionnel sur 4 semaines -->
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-header">
+        <div class="panel-icon purple" style="background:rgba(167,139,250,0.15);">📆</div>
+        <div>
+          <div style="font-weight:600;">Planning prévisionnel — Vue semaines</div>
+          <div style="font-size:11px;color:var(--clr-muted);">Vue calendaire de toutes les séances du cycle</div>
+        </div>
+      </div>
+      <div style="padding:16px 20px;" id="planning-calendar-view">
+        <div style="text-align:center;padding:28px;color:var(--clr-muted);">
+          <div style="font-size:28px;margin-bottom:8px;">📅</div>
+          <div style="font-size:13px;">Aucune séance planifiée. Cliquez sur <strong style="color:var(--clr-accent);">✚ Nouvelle séance</strong> pour commencer.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tableau de suivi détaillé -->
+    <div class="panel" style="margin-bottom:16px;">
+      <div class="panel-header">
+        <div class="panel-icon blue">📋</div>
+        <div style="flex:1;">
+          <div style="font-weight:600;">Tableau de suivi détaillé</div>
+          <div style="font-size:11px;color:var(--clr-muted);">Toutes les séances avec statut, objectif et actions</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="planning-filter-statut" onchange="renderPlanningTable()" style="max-width:160px;font-size:12px;padding:6px 10px;">
+            <option value="">Tous les statuts</option>
+            <option value="À planifier">À planifier</option>
+            <option value="Planifiée">Planifiée</option>
+            <option value="Réalisée">Réalisée</option>
+            <option value="Annulée">Annulée</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" id="planning-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Horaire</th>
+              <th>Classe</th>
+              <th>Niveau</th>
+              <th>Activité</th>
+              <th>Objectif pédagogique</th>
+              <th>Lieu</th>
+              <th>Durée</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="planning-body">
+            <tr>
+              <td colspan="11" style="text-align:center;padding:32px;color:var(--clr-muted);">
+                <div style="font-size:28px;margin-bottom:8px;">📋</div>
+                <div>Aucune séance dans le planning.</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Récapitulatif par activité -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+
+      <!-- Récap par activité -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-icon gold">🏃</div>
+          <div><div style="font-weight:600;">Répartition par activité</div></div>
+        </div>
+        <div id="planning-by-activite" style="padding:14px 16px;">
+          <div style="color:var(--clr-muted);font-size:12px;text-align:center;padding:16px;">Aucune séance.</div>
+        </div>
+      </div>
+
+      <!-- Récap par classe -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-icon green">🎓</div>
+          <div><div style="font-weight:600;">Répartition par classe</div></div>
+        </div>
+        <div id="planning-by-classe" style="padding:14px 16px;">
+          <div style="color:var(--clr-muted);font-size:12px;text-align:center;padding:16px;">Aucune séance.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Boîte conseil pédagogique -->
+    <div style="background:linear-gradient(135deg,rgba(232,184,75,0.07),rgba(75,143,232,0.07));border:1px solid rgba(232,184,75,0.18);border-radius:12px;padding:18px 20px;margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--clr-accent);margin-bottom:10px;display:flex;align-items:center;gap:7px;">
+        <span>💡</span> Recommandations pédagogiques — Course de Durée
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(42,48,71,0.5);border-radius:9px;padding:13px 15px;">
+          <div style="font-size:12px;font-weight:700;color:var(--clr-text);margin-bottom:5px;">📐 Structure du cycle</div>
+          <div style="font-size:12px;color:var(--clr-muted);line-height:1.6;">Prévoir <strong style="color:var(--clr-text);">6 à 8 séances</strong> pour un cycle complet. Alterner séances d'apprentissage (allures) et séances d'évaluation diagnostique.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(42,48,71,0.5);border-radius:9px;padding:13px 15px;">
+          <div style="font-size:12px;font-weight:700;color:var(--clr-text);margin-bottom:5px;">⏱ Durée des séances</div>
+          <div style="font-size:12px;color:var(--clr-muted);line-height:1.6;"><strong style="color:var(--clr-text);">55 min</strong> recommandées : échauffement 10 min · activité 35 min · bilan/retour au calme 10 min.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(42,48,71,0.5);border-radius:9px;padding:13px 15px;">
+          <div style="font-size:12px;font-weight:700;color:var(--clr-text);margin-bottom:5px;">🎯 Progression des objectifs</div>
+          <div style="font-size:12px;color:var(--clr-muted);line-height:1.6;">S1-S2 : découverte allures · S3-S4 : régularité · S5-S6 : gestion effort · S7-S8 : <strong style="color:var(--clr-accent);">évaluation finale</strong>.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(42,48,71,0.5);border-radius:9px;padding:13px 15px;">
+          <div style="font-size:12px;font-weight:700;color:var(--clr-text);margin-bottom:5px;">📊 Lien avec l'évaluation</div>
+          <div style="font-size:12px;color:var(--clr-muted);line-height:1.6;">Les données saisies dans l'onglet <strong style="color:var(--clr-accent);">Saisie</strong> alimentent automatiquement le bilan de classe et les indicateurs de cet onglet.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- fin tab-planning -->
+
+<script>
+// ============================================================
+// PLANIFICATION DES SÉANCES EPS
+// ============================================================
+let planningData = [];
+
+function openPlanningForm(idx) {
+  idx = idx === undefined ? -1 : idx;
+  var form = document.getElementById('planning-form');
+  var title = document.getElementById('pf-title');
+  form.style.display = 'block';
+  document.getElementById('pf-edit-idx').value = idx;
+  var classVal = document.getElementById('cfg-class').value || '';
+  var dateVal  = document.getElementById('cfg-date').value  || '';
+  var trackVal = document.getElementById('cfg-track').value || '200';
+  var seuilVal = document.getElementById('cfg-seuil').value || '5';
+  if (idx === -1) {
+    title.textContent = 'Nouvelle séance';
+    document.getElementById('pf-date').value         = dateVal;
+    document.getElementById('pf-heure-debut').value  = '09:00';
+    document.getElementById('pf-heure-fin').value    = '10:00';
+    document.getElementById('pf-classe').value       = classVal;
+    document.getElementById('pf-niveau').value       = 'Intermédiaire';
+    document.getElementById('pf-activite').value     = 'Course de Durée';
+    document.getElementById('pf-objectif').value     = '';
+    document.getElementById('pf-lieu').value         = 'Piste ' + trackVal + 'm';
+    document.getElementById('pf-materiel').value     = 'Chronomètres · plots · dossards';
+    document.getElementById('pf-organisation').value = 'Groupes par VMA';
+    document.getElementById('pf-deroulement').value  = 'Échauffement 10min · Course de durée 30min · Retour au calme 10min';
+    document.getElementById('pf-criteres').value     = 'Régularité ± ' + seuilVal + 's';
+    document.getElementById('pf-statut').value       = 'À planifier';
+    document.getElementById('pf-remarques').value    = '';
+  } else {
+    var s = planningData[idx];
+    if (!s) return;
+    title.textContent = 'Modifier la séance';
+    document.getElementById('pf-date').value         = s.date         || '';
+    document.getElementById('pf-heure-debut').value  = s.heureDebut   || '';
+    document.getElementById('pf-heure-fin').value    = s.heureFin     || '';
+    document.getElementById('pf-classe').value       = s.classe       || '';
+    document.getElementById('pf-niveau').value       = s.niveau       || 'Intermédiaire';
+    document.getElementById('pf-activite').value     = s.activite     || 'Course de Durée';
+    document.getElementById('pf-objectif').value     = s.objectif     || '';
+    document.getElementById('pf-lieu').value         = s.lieu         || '';
+    document.getElementById('pf-materiel').value     = s.materiel     || '';
+    document.getElementById('pf-organisation').value = s.organisation || '';
+    document.getElementById('pf-deroulement').value  = s.deroulement  || '';
+    document.getElementById('pf-criteres').value     = s.criteres     || '';
+    document.getElementById('pf-statut').value       = s.statut       || 'À planifier';
+    document.getElementById('pf-remarques').value    = s.remarques    || '';
+  }
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closePlanningForm() {
+  document.getElementById('planning-form').style.display = 'none';
+  document.getElementById('pf-edit-idx').value = -1;
+}
+
+function submitPlanning() {
+  var date     = document.getElementById('pf-date').value;
+  var activite = document.getElementById('pf-activite').value;
+  if (!date || !activite) { showToast('⚠️ Date et activité obligatoires', '#f0883e'); return; }
+  var seance = {
+    date         : date,
+    heureDebut   : document.getElementById('pf-heure-debut').value,
+    heureFin     : document.getElementById('pf-heure-fin').value,
+    classe       : document.getElementById('pf-classe').value.trim(),
+    niveau       : document.getElementById('pf-niveau').value,
+    activite     : activite,
+    objectif     : document.getElementById('pf-objectif').value.trim(),
+    lieu         : document.getElementById('pf-lieu').value.trim(),
+    materiel     : document.getElementById('pf-materiel').value.trim(),
+    organisation : document.getElementById('pf-organisation').value.trim(),
+    deroulement  : document.getElementById('pf-deroulement').value.trim(),
+    criteres     : document.getElementById('pf-criteres').value.trim(),
+    statut       : document.getElementById('pf-statut').value,
+    remarques    : document.getElementById('pf-remarques').value.trim()
+  };
+  var idx = parseInt(document.getElementById('pf-edit-idx').value);
+  if (idx === -1) { planningData.push(seance); showToast('✅ Séance ajoutée au planning', '#3ecf8e'); }
+  else            { planningData[idx] = seance; showToast('✏️ Séance modifiée', '#e8b84b'); }
+  closePlanningForm();
+  renderPlanningAll();
+}
+
+function deletePlanningSeance(idx) {
+  if (!confirm('Supprimer cette séance du planning ?')) return;
+  planningData.splice(idx, 1);
+  renderPlanningAll();
+  showToast('🗑 Séance supprimée', '#f85149');
+}
+
+function changePlanningStatut(idx, newStatut) {
+  if (planningData[idx]) { planningData[idx].statut = newStatut; renderPlanningAll(); }
+}
+
+function renderPlanningAll() {
+  var cl = document.getElementById('cfg-class').value || document.getElementById('cfg-level').value || '—';
+  var lbl = document.getElementById('planning-class-label');
+  if (lbl) lbl.textContent = cl;
+  renderPlanningStats();
+  renderPlanningTable();
+  renderPlanningCalendar();
+  renderPlanningByActivite();
+  renderPlanningByClasse();
+}
+
+var STATUT_COLORS = {
+  'À planifier' : { bg:'rgba(124,136,153,0.12)', color:'#7c8899', border:'rgba(124,136,153,0.3)' },
+  'Planifiée'   : { bg:'rgba(75,143,232,0.12)',  color:'#4b8fe8', border:'rgba(75,143,232,0.3)' },
+  'Réalisée'    : { bg:'rgba(62,207,142,0.12)',  color:'#3ecf8e', border:'rgba(62,207,142,0.3)' },
+  'Annulée'     : { bg:'rgba(248,81,73,0.12)',   color:'#f85149', border:'rgba(248,81,73,0.3)' }
+};
+
+function renderPlanningStats() {
+  var total  = planningData.length;
+  var done   = planningData.filter(function(s){ return s.statut==='Réalisée'; }).length;
+  var todo   = planningData.filter(function(s){ return s.statut==='À planifier'||s.statut==='Planifiée'; }).length;
+  var cancel = planningData.filter(function(s){ return s.statut==='Annulée'; }).length;
+  var pct    = total>0 ? Math.round(done/total*100) : 0;
+  document.getElementById('p-stat-total').textContent  = total;
+  document.getElementById('p-stat-done').textContent   = done;
+  document.getElementById('p-stat-todo').textContent   = todo;
+  document.getElementById('p-stat-cancel').textContent = cancel;
+  document.getElementById('p-stat-pct').textContent    = pct+'%';
+  document.getElementById('p-bar-pct').style.width     = pct+'%';
+}
+
+function formatDateFR(dateStr) {
+  if (!dateStr) return '—';
+  var parts = dateStr.split('-');
+  if (parts.length < 3) return dateStr;
+  var jours = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  var mois  = ['','Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  var dt = new Date(dateStr + 'T00:00:00');
+  return jours[dt.getDay()] + ' ' + parseInt(parts[2]) + ' ' + mois[parseInt(parts[1])] + ' ' + parts[0];
+}
+
+function calcDuree(h1, h2) {
+  if (!h1||!h2) return '—';
+  var p1=h1.split(':').map(Number), p2=h2.split(':').map(Number);
+  if (isNaN(p1[0])||isNaN(p2[0])) return '—';
+  var diff=(p2[0]*60+p2[1])-(p1[0]*60+p1[1]);
+  return diff>0 ? diff+' min' : '—';
+}
+
+function renderPlanningTable() {
+  var tbody = document.getElementById('planning-body');
+  if (!tbody) return;
+  var filterStatut = document.getElementById('planning-filter-statut').value;
+  var filtered = planningData.filter(function(s){ return !filterStatut || s.statut===filterStatut; });
+  var sorted   = filtered.slice().sort(function(a,b){ return (a.date||'')<(b.date||'')?-1:1; });
+  if (sorted.length===0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--clr-muted);"><div style="font-size:26px;margin-bottom:8px;">📋</div><div>Aucune séance ' + (filterStatut?'avec ce statut':'planifiée') + '.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map(function(s) {
+    var realIdx = planningData.indexOf(s);
+    var duree   = calcDuree(s.heureDebut, s.heureFin);
+    var c       = STATUT_COLORS[s.statut] || STATUT_COLORS['À planifier'];
+    return '<tr>' +
+      '<td><span class="row-idx">'+(realIdx+1)+'</span></td>' +
+      '<td style="white-space:nowrap;font-size:12px;">' + formatDateFR(s.date) + '</td>' +
+      '<td style="white-space:nowrap;font-size:12px;font-family:'DM Mono',monospace;color:var(--clr-muted);">' + (s.heureDebut||'—') + ' – ' + (s.heureFin||'—') + '</td>' +
+      '<td style="font-weight:600;color:var(--clr-accent2);">' + (s.classe||'—') + '</td>' +
+      '<td style="font-size:11px;color:var(--clr-muted);">' + (s.niveau||'—') + '</td>' +
+      '<td style="font-size:12px;font-weight:600;">' + (s.activite||'—') + '</td>' +
+      '<td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (s.objectif||'') + '">' + (s.objectif||'<span style="color:var(--clr-muted)">—</span>') + '</td>' +
+      '<td style="font-size:11px;color:var(--clr-muted);">' + (s.lieu||'—') + '</td>' +
+      '<td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--clr-muted);">' + duree + '</td>' +
+      '<td><select onchange="changePlanningStatut('+realIdx+', this.value)" style="font-size:11px;padding:4px 7px;border-radius:6px;background:'+c.bg+';color:'+c.color+';border:1px solid '+c.border+';">' +
+        '<option value="À planifier"'+(s.statut==='À planifier'?' selected':'') + '>À planifier</option>' +
+        '<option value="Planifiée"'  +(s.statut==='Planifiée'  ?' selected':'') + '>Planifiée ✔</option>' +
+        '<option value="Réalisée"'   +(s.statut==='Réalisée'   ?' selected':'') + '>Réalisée ✅</option>' +
+        '<option value="Annulée"'    +(s.statut==='Annulée'    ?' selected':'') + '>Annulée ✗</option>' +
+      '</select></td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button class="btn btn-secondary btn-sm" onclick="openPlanningForm('+realIdx+')" style="padding:4px 8px;">✏️</button>' +
+        '<button class="btn btn-danger btn-sm" onclick="deletePlanningSeance('+realIdx+')" style="padding:4px 8px;margin-left:3px;">🗑</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+function renderPlanningCalendar() {
+  var container = document.getElementById('planning-calendar-view');
+  if (!container) return;
+  if (planningData.length===0) {
+    container.innerHTML = '<div style="text-align:center;padding:28px;color:var(--clr-muted);"><div style="font-size:28px;margin-bottom:8px;">📅</div><div style="font-size:13px;">Aucune séance planifiée. Cliquez sur <strong style="color:var(--clr-accent);">✚ Nouvelle séance</strong> pour commencer.</div></div>';
+    return;
+  }
+  var byWeek = {};
+  planningData.slice().sort(function(a,b){return (a.date||'')<(b.date||'')?-1:1;}).forEach(function(s) {
+    if (!s.date) return;
+    var dt = new Date(s.date + 'T00:00:00');
+    var day = dt.getDay();
+    var monday = new Date(dt);
+    monday.setDate(dt.getDate() - ((day+6)%7));
+    var key = monday.toISOString().slice(0,10);
+    if (!byWeek[key]) byWeek[key] = { monday: monday, seances: [] };
+    byWeek[key].seances.push({ s: s, realIdx: planningData.indexOf(s) });
+  });
+  var moisFR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var weekKeys = Object.keys(byWeek).sort();
+  var html = '';
+  weekKeys.forEach(function(wk, wi) {
+    var group = byWeek[wk];
+    var monday = group.monday;
+    var sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    var weekLabel = 'Semaine '+(wi+1)+' — du '+monday.getDate()+' '+moisFR[monday.getMonth()]+' au '+sunday.getDate()+' '+moisFR[sunday.getMonth()]+' '+sunday.getFullYear();
+    html += '<div style="margin-bottom:18px;">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">' +
+        '<div style="background:rgba(232,184,75,0.12);border:1px solid rgba(232,184,75,0.25);border-radius:6px;padding:3px 12px;font-size:11px;font-weight:700;color:var(--clr-accent);">S'+(wi+1)+'</div>' +
+        '<span style="font-size:12px;color:var(--clr-muted);">'+weekLabel+'</span>' +
+        '<span style="font-size:11px;color:var(--clr-muted2);">('+group.seances.length+' séance'+(group.seances.length>1?'s':'')+')</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">';
+    group.seances.forEach(function(item) {
+      var s = item.s, realIdx = item.realIdx;
+      var c = STATUT_COLORS[s.statut] || STATUT_COLORS['À planifier'];
+      var duree = calcDuree(s.heureDebut, s.heureFin);
+      html += '<div style="background:var(--clr-surface2);border:1px solid '+c.border+';border-radius:10px;padding:13px 15px;border-left:3px solid '+c.color+';">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:700;color:var(--clr-text);">'+(s.activite||'—')+'</div>' +
+            '<div style="font-size:11px;color:var(--clr-muted);margin-top:1px;">'+formatDateFR(s.date)+' · '+(s.heureDebut||'—')+' – '+(s.heureFin||'—')+' <span style="color:var(--clr-muted2);">('+duree+')</span></div>' +
+          '</div>' +
+          '<span style="font-size:10px;font-weight:700;color:'+c.color+';background:'+c.bg+';border:1px solid '+c.border+';border-radius:5px;padding:2px 7px;white-space:nowrap;margin-left:8px;">'+s.statut+'</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;">' +
+          '<span style="font-size:11px;color:var(--clr-accent2);font-weight:600;">'+(s.classe||'—')+'</span>' +
+          '<span style="font-size:11px;color:var(--clr-muted);">📍 '+(s.lieu||'—')+'</span>' +
+          '<span style="font-size:11px;color:var(--clr-muted);">'+(s.niveau||'—')+'</span>' +
+        '</div>' +
+        (s.objectif ? '<div style="font-size:11px;color:var(--clr-text);margin-bottom:6px;background:rgba(255,255,255,0.03);border-radius:5px;padding:4px 8px;">🎯 '+s.objectif+'</div>' : '') +
+        '<div style="display:flex;gap:5px;margin-top:6px;">' +
+          '<button class="btn btn-secondary btn-sm" onclick="openPlanningForm('+realIdx+')" style="padding:3px 8px;font-size:11px;">✏️ Modifier</button>' +
+          '<select onchange="changePlanningStatut('+realIdx+', this.value)" style="font-size:10px;padding:3px 7px;border-radius:5px;background:'+c.bg+';color:'+c.color+';border:1px solid '+c.border+';">' +
+            '<option value="À planifier"'+(s.statut==='À planifier'?' selected':'')+'>À planifier</option>' +
+            '<option value="Planifiée"'  +(s.statut==='Planifiée'  ?' selected':'')+'>Planifiée ✔</option>' +
+            '<option value="Réalisée"'   +(s.statut==='Réalisée'   ?' selected':'')+'>Réalisée ✅</option>' +
+            '<option value="Annulée"'    +(s.statut==='Annulée'    ?' selected':'')+'>Annulée ✗</option>' +
+          '</select>' +
+        '</div></div>';
+    });
+    html += '</div></div>';
+  });
+  container.innerHTML = html;
+}
+
+function renderPlanningByActivite() {
+  var el = document.getElementById('planning-by-activite');
+  if (!el) return;
+  if (planningData.length===0) { el.innerHTML='<div style="color:var(--clr-muted);font-size:12px;text-align:center;padding:16px;">Aucune séance.</div>'; return; }
+  var counts={}, total=planningData.length;
+  planningData.forEach(function(s){ counts[s.activite]=(counts[s.activite]||0)+1; });
+  el.innerHTML = Object.entries(counts).sort(function(a,b){return b[1]-a[1];}).map(function(e){
+    var pct=Math.round(e[1]/total*100);
+    return '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:600;">'+e[0]+'</span><span class="mono" style="color:var(--clr-muted);">'+e[1]+' séance'+(e[1]>1?'s':'')+' · '+pct+'%</span></div><div class="progress-bar"><div class="progress-fill" style="background:var(--clr-accent);width:'+pct+'%;"></div></div></div>';
+  }).join('');
+}
+
+function renderPlanningByClasse() {
+  var el = document.getElementById('planning-by-classe');
+  if (!el) return;
+  if (planningData.length===0) { el.innerHTML='<div style="color:var(--clr-muted);font-size:12px;text-align:center;padding:16px;">Aucune séance.</div>'; return; }
+  var counts={}, total=planningData.length;
+  var colors=['#4b8fe8','#3ecf8e','#e8b84b','#f0883e','#f85149'];
+  planningData.forEach(function(s){ var k=s.classe||'—'; counts[k]=(counts[k]||0)+1; });
+  el.innerHTML = Object.entries(counts).sort(function(a,b){return b[1]-a[1];}).map(function(e,i){
+    var pct=Math.round(e[1]/total*100), col=colors[i%colors.length];
+    return '<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;"><span style="font-weight:700;color:'+col+';">'+e[0]+'</span><span class="mono" style="color:var(--clr-muted);">'+e[1]+' séance'+(e[1]>1?'s':'')+' · '+pct+'%</span></div><div class="progress-bar"><div class="progress-fill" style="background:'+col+';width:'+pct+'%;"></div></div></div>';
+  }).join('');
+}
+
+function planningExportCSV() {
+  if (planningData.length===0) { showToast('⚠️ Aucune séance à exporter','#f0883e'); return; }
+  var headers=['ID','Date','Heure debut','Heure fin','Classe','Niveau','Activite','Objectif','Lieu','Materiel','Organisation','Deroulement','Criteres','Statut','Remarques'];
+  var rows=planningData.map(function(s,i){
+    return [i+1,s.date||'',s.heureDebut||'',s.heureFin||'',s.classe||'',s.niveau||'',s.activite||'',s.objectif||'',s.lieu||'',s.materiel||'',s.organisation||'',s.deroulement||'',s.criteres||'',s.statut||'',s.remarques||''].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');
+  });
+  var csv=[headers.join(',')].concat(rows).join('\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='planning_EPS_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+  showToast('⬇ Planning exporté en CSV','#3ecf8e');
+}
+
+function planningPrint() {
+  var classe=document.getElementById('cfg-class').value||'—';
+  var level=document.getElementById('cfg-level').value||'—';
+  var etab=document.getElementById('cfg-etab').value||'—';
+  var moisFR=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var rows=planningData.slice().sort(function(a,b){return (a.date||'')<(b.date||'')?-1:1;}).map(function(s,i){
+    var duree=calcDuree(s.heureDebut,s.heureFin);
+    var c=STATUT_COLORS[s.statut]||STATUT_COLORS['À planifier'];
+    return '<tr><td style="text-align:center;font-weight:700;">'+(i+1)+'</td><td>'+formatDateFR(s.date)+'</td><td style="white-space:nowrap;">'+(s.heureDebut||'—')+' – '+(s.heureFin||'—')+'<br><small style="color:#666;">'+duree+'</small></td><td style="font-weight:700;color:#1e5fa3;">'+(s.classe||'—')+'</td><td style="font-size:11px;">'+(s.niveau||'—')+'</td><td style="font-weight:600;">'+(s.activite||'—')+'</td><td style="font-size:11px;">'+(s.objectif||'—')+'</td><td style="font-size:11px;">'+(s.lieu||'—')+'</td><td style="font-size:11px;">'+(s.materiel||'—')+'</td><td><span style="background:'+c.bg+';color:'+c.color+';border:1px solid '+c.border+';border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap;">'+s.statut+'</span></td></tr>';
+  }).join('');
+  var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/><title>Planning EPS — '+classe+'</title><style>body{font-family:Arial,sans-serif;font-size:12px;color:#333;margin:0;padding:20px;}h1{font-size:18px;color:#1e5fa3;margin-bottom:4px;}.meta{font-size:11px;color:#666;margin-bottom:16px;}table{width:100%;border-collapse:collapse;}th{background:#1e5fa3;color:#fff;font-size:10px;padding:7px 8px;text-align:left;}td{padding:6px 8px;border-bottom:1px solid #eee;vertical-align:top;}tr:nth-child(even) td{background:#f8f9fa;}.footer{font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px;margin-top:16px;display:flex;justify-content:space-between;}</style></head><body>' +
+    '<h1>📅 Planning des Séances EPS — '+classe+' · '+level+'</h1>' +
+    '<div class="meta">Établissement : '+etab+' &nbsp;·&nbsp; Date : '+new Date().toLocaleDateString('fr-FR')+' &nbsp;·&nbsp; Total : '+planningData.length+' séance(s)</div>' +
+    '<table><thead><tr><th>#</th><th>Date</th><th>Horaire</th><th>Classe</th><th>Niveau</th><th>Activité</th><th>Objectif</th><th>Lieu</th><th>Matériel</th><th>Statut</th></tr></thead><tbody>'+rows+'</tbody></table>' +
+    '<div class="footer"><span>APD 2026 — Outil EPS</span><span>Conforme OP Maroc 2009</span></div></body></html>';
+  var w=window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(function(){w.print();},400);
+}
 </script>
 </body>
 </html>
